@@ -47,3 +47,26 @@ jobs:
 
       - name: Lint source and tests
         run: ruff check --isolated --select E4,E7,E9,F src tests
+
+  deploy:
+    needs: [build-and-test, lint]
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Write IST deployment timestamp on AWS instance
+        env:
+          AWS_DEPLOY_HOST: ${{ secrets.AWS_DEPLOY_HOST }}
+          AWS_DEPLOY_USER: ${{ secrets.AWS_DEPLOY_USER }}
+          AWS_SSH_PRIVATE_KEY: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          AWS_DEPLOY_KNOWN_HOSTS: ${{ secrets.AWS_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$AWS_SSH_PRIVATE_KEY" > ~/.ssh/aws_deploy_key
+          chmod 600 ~/.ssh/aws_deploy_key
+          printf '%s\n' "$AWS_DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          timestamp="$(TZ=Asia/Kolkata date '+%Y-%m-%d %H:%M:%S %Z')"
+          ssh -i ~/.ssh/aws_deploy_key "$AWS_DEPLOY_USER@$AWS_DEPLOY_HOST" \
+            "printf '%s\\n' '$timestamp' > /tmp/ci-deployment-timestamp.txt"
